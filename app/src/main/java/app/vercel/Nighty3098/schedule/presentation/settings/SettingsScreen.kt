@@ -60,6 +60,8 @@ import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
 import app.vercel.Nighty3098.schedule.data.calendar.DeviceCalendar
 import app.vercel.Nighty3098.schedule.domain.model.ThemeMode
+import app.vercel.Nighty3098.schedule.ui.theme.appSwitchColors
+import app.vercel.Nighty3098.schedule.ui.theme.selectorFieldColors
 import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -187,9 +189,9 @@ fun SettingsScreen(
                     OutlinedTextField(
                         value = groupDraft,
                         onValueChange = { groupDraft = it },
-                        label = { Text("Группа") },
                         placeholder = { Text("3414") },
                         singleLine = true,
+                        colors = selectorFieldColors(),
                         keyboardOptions = KeyboardOptions(
                             keyboardType = KeyboardType.Text,
                             imeAction = ImeAction.Done,
@@ -250,6 +252,7 @@ fun SettingsScreen(
                             checked = calendarEnabled,
                             onCheckedChange = ::onCalendarToggle,
                             enabled = !syncBusy,
+                            colors = appSwitchColors(),
                         )
                     }
                     if (permissionDenied && !calendarEnabled) {
@@ -346,8 +349,9 @@ fun SettingsScreen(
                     OutlinedTextField(
                         value = loginDraft,
                         onValueChange = { loginDraft = it },
-                        label = { Text("Логин") },
+                        placeholder = { Text("Логин") },
                         singleLine = true,
+                        colors = selectorFieldColors(),
                         keyboardOptions = KeyboardOptions(
                             keyboardType = KeyboardType.Text,
                             imeAction = ImeAction.Next,
@@ -361,8 +365,9 @@ fun SettingsScreen(
                     OutlinedTextField(
                         value = passwordDraft,
                         onValueChange = { passwordDraft = it },
-                        label = { Text("Пароль") },
+                        placeholder = { Text("Пароль") },
                         singleLine = true,
+                        colors = selectorFieldColors(),
                         visualTransformation = if (passwordVisible) {
                             VisualTransformation.None
                         } else {
@@ -437,10 +442,9 @@ private fun CalendarDropdown(
             value = selected?.name ?: selectedName.ifEmpty { "Выбери календарь" },
             onValueChange = {},
             readOnly = true,
-            label = { Text("Календарь") },
             supportingText = selected?.let { sel -> { Text(sel.account) } },
             trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expanded) },
-            colors = ExposedDropdownMenuDefaults.outlinedTextFieldColors(),
+            colors = selectorFieldColors(),
             modifier = Modifier
                 .fillMaxWidth()
                 .menuAnchor(MenuAnchorType.PrimaryNotEditable),
@@ -487,9 +491,8 @@ private fun ThemeDropdown(
             value = current.title,
             onValueChange = {},
             readOnly = true,
-            label = { Text("Оформление") },
             trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expanded) },
-            colors = ExposedDropdownMenuDefaults.outlinedTextFieldColors(),
+            colors = selectorFieldColors(),
             modifier = Modifier
                 .fillMaxWidth()
                 .menuAnchor(MenuAnchorType.PrimaryNotEditable),
