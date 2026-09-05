@@ -21,8 +21,7 @@ import app.vercel.Nighty3098.schedule.widget.ScheduleWidget
 import kotlinx.coroutines.launch
 
 class MainActivity : ComponentActivity() {
-    override fun onCreate(savedInstanceState: Bundle?) {
-        super.onCreate(savedInstanceState)
+    override fun onCreate(savedInstanceState: Bundle?) {        super.onCreate(savedInstanceState)
         enableEdgeToEdge()
         val container = appContainer()
         setContent {
@@ -45,7 +44,16 @@ class MainActivity : ComponentActivity() {
                                 container.settings,
                                 // После успешного обновления данных виджет
                                 // показывает уже новый кэш, а не вчерашний.
-                                onLessonsChanged = { updateWidgets() },
+                                onLessonsChanged = {
+                                    updateWidgets()
+                                    // Календарь пересинхронизируется,
+                                    // только если включён в настройках.
+                                    scope.launch {
+                                        runCatching {
+                                            container.calendarSync.syncIfEnabled()
+                                        }
+                                    }
+                                },
                             ),
                         )
                         ScheduleScreen(
@@ -56,7 +64,10 @@ class MainActivity : ComponentActivity() {
                     }
                     composable("settings") {
                         val vm: SettingsViewModel = viewModel(
-                            factory = SettingsViewModel.Factory(container.settings),
+                            factory = SettingsViewModel.Factory(
+                                container.settings,
+                                container.calendarSync,
+                            ),
                         )
                         SettingsScreen(viewModel = vm, onBack = { nav.popBackStack() })
                     }

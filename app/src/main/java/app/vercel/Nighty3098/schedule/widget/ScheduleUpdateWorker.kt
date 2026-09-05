@@ -27,6 +27,8 @@ class ScheduleUpdateWorker(
                 // Ошибки сети не роняем: кэш и так показывается.
                 container.scheduleRepository.refresh(group)
             }
+            // Календарь пересинхронизируется, только если включён в настройках.
+            runCatching { container.calendarSync.syncIfEnabled() }
             ScheduleWidget().updateAll(applicationContext)
             Result.success()
         } catch (_: Exception) {

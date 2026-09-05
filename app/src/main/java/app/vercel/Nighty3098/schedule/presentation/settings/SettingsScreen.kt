@@ -1,5 +1,10 @@
 package app.vercel.Nighty3098.schedule.presentation.settings
 
+import android.Manifest
+import android.content.Intent
+import android.net.Uri
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -31,25 +36,31 @@ import androidx.compose.material3.MenuAnchorType
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
+import app.vercel.Nighty3098.schedule.data.calendar.DeviceCalendar
 import app.vercel.Nighty3098.schedule.domain.model.ThemeMode
+import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -60,11 +71,81 @@ fun SettingsScreen(
     val savedGroup by viewModel.groupQuery.collectAsState()
     val theme by viewModel.themeMode.collectAsState()
     val savedLogin by viewModel.login.collectAsState()
+    val calendarEnabled by viewModel.calendarSyncEnabled.collectAsState()
+    val calendarId by viewModel.calendarId.collectAsState()
+    val calendarName by viewModel.calendarName.collectAsState()
 
     var groupDraft by remember(savedGroup) { mutableStateOf(savedGroup) }
     var loginDraft by remember(savedLogin) { mutableStateOf(savedLogin) }
     var passwordDraft by remember { mutableStateOf("") }
     var passwordVisible by remember { mutableStateOf(false) }
+
+    // ---- Календарь: локальное состояние ----
+    val ctx = LocalContext.current
+    val scope = rememberCoroutineScope()
+    var deviceCalendars by remember { mutableStateOf(emptyList<DeviceCalendar>()) }
+    var permissionDenied by remember { mutableStateOf(false) }
+    var syncMessage by remember { mutableStateOf("") }
+    var syncBusy by remember { mutableStateOf(false) }
+
+    /** Полный цикл включения: флаг → календари → календарь по умолчанию → запись. */
+    fun enableCalendarFlow() {
+        scope.launch {
+            syncBusy = true
+            syncMessage = ""
+            viewModel.setCalendarSyncEnabled(true)
+            val cals = viewModel.loadDeviceCalendars()
+            deviceCalendars = cals
+            if (cals.isNotEmpty() && calendarId == null) {
+                val pick = cals.first()
+                viewModel.setCalendarAccount(pick.id, pick.name)
+            }
+            viewModel.syncCalendarNow()
+                .onSuccess { syncMessage = "Записано событий: $it" }
+                .onFailure { syncMessage = "Ошибка синхронизации: ${it.message}" }
+            syncBusy = false
+        }
+    }
+
+    val permissionLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestMultiplePermissions(),
+    ) { grants ->
+        android.util.Log.d("CalendarSync", "permission result: $grants")
+        if (grants.values.all { it }) {
+            permissionDenied = false
+            enableCalendarFlow()
+        } else {
+            permissionDenied = true
+        }
+    }
+
+    fun onCalendarToggle(on: Boolean) {
+        android.util.Log.d("CalendarSync", "toggle tap: on=$on")
+        if (!on) {
+            scope.launch {
+                viewModel.setCalendarSyncEnabled(false)
+                viewModel.clearCalendarEvents()
+                syncMessage = "Синхронизация выключена, события удалены"
+            }
+            return
+        }
+        permissionDenied = false
+        if (viewModel.hasCalendarPermission()) {
+            enableCalendarFlow()
+        } else {
+            permissionLauncher.launch(
+                arrayOf(Manifest.permission.READ_CALENDAR, Manifest.permission.WRITE_CALENDAR),
+            )
+        }
+    }
+
+    // Подгружаем список календарей, когда синхронизация включена
+    // (например, после перезапуска экрана).
+    LaunchedEffect(calendarEnabled) {
+        if (calendarEnabled && viewModel.hasCalendarPermission()) {
+            deviceCalendars = viewModel.loadDeviceCalendars()
+        }
+    }
 
     val focusManager = LocalFocusManager.current
     val passwordFocus = remember { FocusRequester() }
@@ -144,6 +225,116 @@ fun SettingsScreen(
                         current = theme,
                         onSelect = { viewModel.saveTheme(it) },
                     )
+                }
+            }
+
+            // ---- Календарь: запись пар в календарь устройства (Google — через системную синхронизацию) ----
+            Card {
+                Column(Modifier.padding(16.dp)) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Column(Modifier.weight(1f)) {
+                            Text(
+                                "Календарь",
+                                style = MaterialTheme.typography.titleMedium,
+                            )
+                            Text(
+                                "Пары на 4 недели вперёд",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                        Switch(
+                            checked = calendarEnabled,
+                            onCheckedChange = ::onCalendarToggle,
+                            enabled = !syncBusy,
+                        )
+                    }
+                    if (permissionDenied && !calendarEnabled) {
+                        Spacer(Modifier.height(8.dp))
+                        Text(
+                            "Без доступа к календарю запись пар невозможна. " +
+                                "Разреши доступ в настройках системы.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.error,
+                        )
+                        Spacer(Modifier.height(8.dp))
+                        Button(
+                            onClick = {
+                                ctx.startActivity(
+                                    Intent(
+                                        android.provider.Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
+                                    ).apply {
+                                        data = Uri.fromParts("package", ctx.packageName, null)
+                                        addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                                    },
+                                )
+                            },
+                        ) {
+                            Text("Открыть настройки")
+                        }
+                    }
+                    if (calendarEnabled) {
+                        Spacer(Modifier.height(8.dp))
+                        if (deviceCalendars.isEmpty()) {
+                            Text(
+                                "Календари не найдены — проверь разрешения и аккаунты.",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        } else {
+                            CalendarDropdown(
+                                calendars = deviceCalendars,
+                                selectedId = calendarId,
+                                selectedName = calendarName,
+                                onSelect = { cal ->
+                                    scope.launch {
+                                        syncBusy = true
+                                        // Сначала чистим СТАРЫЙ календарь, потом пишем в новый.
+                                        viewModel.clearCalendarEvents()
+                                        viewModel.setCalendarAccount(cal.id, cal.name)
+                                        viewModel.syncCalendarNow()
+                                            .onSuccess {
+                                                syncMessage = "Записано событий: $it"
+                                            }
+                                            .onFailure {
+                                                syncMessage = "Ошибка: ${it.message}"
+                                            }
+                                        syncBusy = false
+                                    }
+                                },
+                            )
+                            Spacer(Modifier.height(8.dp))
+                            Button(
+                                onClick = {
+                                    scope.launch {
+                                        syncBusy = true
+                                        viewModel.syncCalendarNow()
+                                            .onSuccess {
+                                                syncMessage = "Записано событий: $it"
+                                            }
+                                            .onFailure {
+                                                syncMessage = "Ошибка: ${it.message}"
+                                            }
+                                        syncBusy = false
+                                    }
+                                },
+                                enabled = !syncBusy,
+                            ) {
+                                Text("Синхронизировать сейчас")
+                            }
+                        }
+                        if (syncMessage.isNotEmpty()) {
+                            Spacer(Modifier.height(4.dp))
+                            Text(
+                                syncMessage,
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                    }
                 }
             }
 
@@ -227,6 +418,59 @@ fun SettingsScreen(
     }
 }
 
+/** Выпадающий селектор календаря устройства для записи пар. */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun CalendarDropdown(
+    calendars: List<DeviceCalendar>,
+    selectedId: Long?,
+    selectedName: String,
+    onSelect: (DeviceCalendar) -> Unit,
+) {
+    var expanded by remember { mutableStateOf(false) }
+    val selected = calendars.firstOrNull { it.id == selectedId }
+    ExposedDropdownMenuBox(
+        expanded = expanded,
+        onExpandedChange = { expanded = it },
+    ) {
+        OutlinedTextField(
+            value = selected?.name ?: selectedName.ifEmpty { "Выбери календарь" },
+            onValueChange = {},
+            readOnly = true,
+            label = { Text("Календарь") },
+            supportingText = selected?.let { sel -> { Text(sel.account) } },
+            trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expanded) },
+            colors = ExposedDropdownMenuDefaults.outlinedTextFieldColors(),
+            modifier = Modifier
+                .fillMaxWidth()
+                .menuAnchor(MenuAnchorType.PrimaryNotEditable),
+        )
+        ExposedDropdownMenu(
+            expanded = expanded,
+            onDismissRequest = { expanded = false },
+        ) {
+            calendars.forEach { cal ->
+                DropdownMenuItem(
+                    text = {
+                        Column {
+                            Text(cal.name)
+                            Text(
+                                cal.account,
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                    },
+                    onClick = {
+                        onSelect(cal)
+                        expanded = false
+                    },
+                    contentPadding = ExposedDropdownMenuDefaults.ItemContentPadding,
+                )
+            }
+        }
+    }
+}
 /** Выпадающий селектор темы с названием и описанием каждого варианта. */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable

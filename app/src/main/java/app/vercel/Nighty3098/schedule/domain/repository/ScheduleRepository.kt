@@ -1,6 +1,7 @@
 package app.vercel.Nighty3098.schedule.domain.repository
 
 import app.vercel.Nighty3098.schedule.domain.model.DaySchedule
+import app.vercel.Nighty3098.schedule.domain.model.Lesson
 import kotlinx.coroutines.flow.Flow
 import java.time.LocalDate
 
@@ -22,6 +23,12 @@ interface ScheduleRepository {
 
     /** Когда последний раз успешно обновляли группу (null — никогда). */
     suspend fun lastUpdated(groupQuery: String): Long?
+
+    /**
+     * Разовый (не Flow) список пар на дату — для фоновых потребителей
+     * вроде синхронизации с календарём, которым не нужна подписка.
+     */
+    suspend fun getDayLessons(date: LocalDate, groupQuery: String): List<Lesson>
 
     companion object {
         /** Время жизни кэша: 3 часа. */

@@ -108,6 +108,13 @@ class ScheduleRepositoryImpl(
             dao.getMeta(groupQuery.trim())?.updatedAtMillis
         }
 
+    override suspend fun getDayLessons(date: LocalDate, groupQuery: String): List<Lesson> =
+        withContext(Dispatchers.IO) {
+            val week = WeekParity.of(date)
+            val day = WeekParity.dayIndex(date)
+            dao.getDay(groupQuery.trim(), week, day).map { it.toDomain() }
+        }
+
     // ---------- mapping ----------
 
     private fun LessonEntity.toDomain(): Lesson = Lesson(

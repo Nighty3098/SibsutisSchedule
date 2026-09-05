@@ -10,6 +10,7 @@ import androidx.work.ExistingPeriodicWorkPolicy
 import androidx.work.NetworkType
 import androidx.work.PeriodicWorkRequestBuilder
 import androidx.work.WorkManager
+import app.vercel.Nighty3098.schedule.data.calendar.CalendarSyncManager
 import app.vercel.Nighty3098.schedule.data.datastore.SecureCredentialsStore
 import app.vercel.Nighty3098.schedule.data.datastore.SettingsDataStore
 import app.vercel.Nighty3098.schedule.data.local.ScheduleDatabase
@@ -86,6 +87,10 @@ class AppContainer(context: Context) {
     }
     val refreshSchedule by lazy {
         RefreshScheduleUseCase(scheduleRepository, settings)
+    }
+
+    val calendarSync by lazy {
+        CalendarSyncManager(appContext, scheduleRepository, settings)
     }
 
     /** Фон: обновление кэша + виджета каждые 3 часа при наличии сети. */
