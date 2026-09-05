@@ -40,6 +40,18 @@ object WeekParity {
     fun weekName(date: LocalDate): String =
         if (isNumerator(date)) "Числитель" else "Знаменатель"
 
+    /**
+     * Название недели в терминах «чётная / нечётная» — так неделю
+     * называют сами студенты.
+     *
+     * Общепринятое соответствие: числитель — нечётная неделя
+     * (1-я, 3-я, … от 1 сентября), знаменатель — чётная.
+     * Проверено: пн 25.05.2026 — числитель и 39-я (нечётная)
+     * неделя от 01.09.2025.
+     */
+    fun evenOddName(date: LocalDate): String =
+        if (isNumerator(date)) "Нечётная" else "Чётная"
+
     private fun defaultAnchor(date: LocalDate): LocalDate {
         val sep1 = LocalDate.of(date.year, 9, 1)
         return if (date.isBefore(sep1)) sep1.minusYears(1) else sep1

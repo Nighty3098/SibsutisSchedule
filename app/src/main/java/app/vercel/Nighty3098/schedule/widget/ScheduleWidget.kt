@@ -145,12 +145,12 @@ private fun widgetPalette(theme: ThemeMode): WidgetPalette? = when (theme) {
 /**
  * Виджет расписания в стиле повестки Google Календаря (Jetpack Glance).
  *
- * - Скруглённая карточка (28.dp), шапка с месяцем и кнопкой «+»
- *   (обновление), ниже — секции дней («Сегодня, 5 сентября»)
- *   с плоскими строками пар и цветной полоской типа слева.
- * - Пустые дни пропускаются (кроме сегодня — там «Пар нет»),
- *   показ: сегодня + до 2 ближайших учебных дней, максимум 5 пар
- *   на день, список прокручивается (LazyColumn, как у Google).
+ * - Скруглённая карточка (28.dp), шапка с месяцем, ниже —
+ *   секции дней («Сегодня, 5 сентября») с плоскими строками пар
+ *   и цветной полоской типа слева.
+ * - Дни идут строго подряд (сегодня + 2 следующих), пустой день
+ *   показывает строку «Пар нет»; максимум 5 пар на день, список
+ *   прокручивается (LazyColumn, как у Google).
  * - Читает кэш Room напрямую (офлайн), поэтому работает без сети.
  * - Стиль берётся из настроек приложения, SYSTEM — динамические
  *   Material You цвета Android (GlanceTheme).
@@ -164,10 +164,7 @@ class ScheduleWidget : GlanceAppWidget() {
     companion object {
         private const val TAG = "ScheduleWidget"
 
-        /** На сколько дней вперёд ищем пары для повестки. */
-        private const val AGENDA_LOOKAHEAD_DAYS = 6
-
-        /** Максимум секций дней в повестке (сегодня + ближайшие с парами). */
+        /** Сколько дней подряд показывает повестка, начиная с сегодня. */
         private const val AGENDA_MAX_SECTIONS = 3
     }
 
@@ -188,22 +185,14 @@ class ScheduleWidget : GlanceAppWidget() {
         // всё после него недостижимо.
         Log.d(TAG, "provideGlance: group='$group' theme=$theme")
 
-        // Повестка: сегодня + ближайшие дни с парами (максимум 3 секции).
         // Разовые запросы (не подписки): виджет перерисовывается целиком,
         // реактивность не нужна, а subscribe/collect обходится дороже.
-        // Ранний выход: дальше заполненных секций данные не нужны.
         val agenda: List<AgendaDay> = if (group.isBlank()) {
             emptyList()
         } else {
-            buildList {
-                for (offset in 0..AGENDA_LOOKAHEAD_DAYS) {
-                    val date = today.plusDays(offset.toLong())
-                    val dayLessons = container.scheduleRepository.getDayLessons(date, group)
-                    if (offset == 0 || dayLessons.isNotEmpty()) {
-                        add(AgendaDay(date, dayLessons))
-                    }
-                    if (size >= AGENDA_MAX_SECTIONS) break
-                }
+            (0 until AGENDA_MAX_SECTIONS).map { offset ->
+                val date = today.plusDays(offset.toLong())
+                AgendaDay(date, container.scheduleRepository.getDayLessons(date, group))
             }
         }
 
@@ -338,9 +327,13 @@ private fun WidgetBody(
                             "…и ещё ${row.count}",
                             style = TextStyle(color = secondary, fontSize = 12.sp),
                         )
+                        // Та же вертикальная геометрия, что у строк пар
+                        // (padding 5.dp), иначе строка выглядит зажатой
+                        // на фоне остальных.
                         AgendaRow.NoLessons -> Text(
                             "Пар нет 🎉",
                             style = TextStyle(color = secondary, fontSize = 13.sp),
+                            modifier = GlanceModifier.padding(vertical = 5.dp),
                         )
                     }
                 }
@@ -350,8 +343,7 @@ private fun WidgetBody(
 }
 
 /**
- * Шапка в духе Google Календаря: значок-«календарик», месяц + год,
- * группа второй строкой и кнопка «+» справа (обновление данных).
+ * Шапка в духе Google Календаря: значок-«календарик», месяц + год
  */
 @androidx.compose.runtime.Composable
 private fun AgendaHeader(
@@ -363,8 +355,6 @@ private fun AgendaHeader(
     accentFg: ColorProvider,
     ru: Locale,
 ) {
-    // Месяц шапки — всегда текущий, как у Google (повестка может уходить
-    // в следующий месяц, но шапка показывает «где мы сейчас»).
     val monthTitle = today
         .format(DateTimeFormatter.ofPattern("LLLL yyyy", ru))
         .replaceFirstChar { it.uppercaseChar() }
@@ -372,7 +362,6 @@ private fun AgendaHeader(
         modifier = GlanceModifier.fillMaxWidth(),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        // Бейдж «31» — отсылка к иконке Google Календаря.
         Box(
             modifier = GlanceModifier
                 .width(34.dp)
@@ -382,8 +371,10 @@ private fun AgendaHeader(
                 .clickable(actionStartActivity<MainActivity>()),
             contentAlignment = Alignment.Center,
         ) {
+            // Сегодняшнее число — как иконка Google Календаря,
+            // которая всегда показывает текущую дату.
             Text(
-                text = "31",
+                text = today.dayOfMonth.toString(),
                 style = TextStyle(fontWeight = FontWeight.Bold, color = bg, fontSize = 15.sp),
             )
         }
@@ -402,21 +393,11 @@ private fun AgendaHeader(
                 )
             }
         }
-        // «+» как у Google, но создаёт не событие (пары привозит сайт вуза),
-        // а запускает обновление данных.
-        Text(
-            text = "+",
-            style = TextStyle(color = accentFg, fontSize = 24.sp),
-            modifier = GlanceModifier
-                .padding(6.dp)
-                .clickable(actionRunCallback<RefreshAction>()),
-        )
     }
 }
 
 /**
  * Заголовок секции дня: крупное число слева, день недели
- * и «Сегодня • Числитель» справа — как дата-хедер повестки Google.
  */
 @androidx.compose.runtime.Composable
 private fun AgendaDayHeader(
@@ -433,7 +414,7 @@ private fun AgendaDayHeader(
         today.plusDays(1) -> "Завтра"
         else -> null
     }
-    val sub = listOfNotNull(relative, WeekParity.weekName(date)).joinToString(" • ")
+    val sub = listOfNotNull(relative, WeekParity.evenOddName(date)).joinToString(" • ")
     val weekday = date
         .format(DateTimeFormatter.ofPattern("EEEE", ru))
         .replaceFirstChar { it.uppercaseChar() }
@@ -484,9 +465,12 @@ private fun AgendaEventRow(
     val time = listOf(lesson.timeFrom, lesson.timeTo)
         .filter { it.isNotBlank() }
         .joinToString("–")
+    // Подгруппа — в ту же строку деталей, как в карточке приложения:
+    // «09:00–10:30 • ауд. 101 • Подгруппа 1». Пустые значения выпадают.
     val timeRoom = listOfNotNull(
         time.takeIf { it.isNotEmpty() },
         lesson.room.takeIf { it.isNotBlank() }?.let { "ауд. $it" },
+        lesson.subgroup.takeIf { it.isNotBlank() },
     ).joinToString(" • ")
     val teachers = lesson.teachers.joinToString(", ")
     Row(
@@ -579,6 +563,12 @@ private fun UltraCompactBody(
                     val time = listOf(lesson.timeFrom, lesson.timeTo)
                         .filter { it.isNotBlank() }
                         .joinToString("–")
+                    // Подгруппа — туда же, второй строкой: места в 2x2 мало,
+                    // отдельную строку позволить нельзя.
+                    val sub = listOfNotNull(
+                        time.takeIf { it.isNotEmpty() },
+                        lesson.subgroup.takeIf { it.isNotBlank() },
+                    ).joinToString(" • ")
                     Column(
                         modifier = GlanceModifier
                             .fillMaxWidth()
@@ -593,9 +583,9 @@ private fun UltraCompactBody(
                             ),
                             maxLines = 1,
                         )
-                        if (time.isNotEmpty()) {
+                        if (sub.isNotEmpty()) {
                             Text(
-                                text = time,
+                                text = sub,
                                 style = TextStyle(
                                     color = ColorProvider(lesson.type.accentFor(theme)),
                                     fontSize = 11.sp,

@@ -76,6 +76,9 @@ class ScheduleParserTest {
         assertEquals(0, WeekParity.of(LocalDate.of(2025, 9, 1)))
         assertEquals("Знаменатель", WeekParity.weekName(LocalDate.of(2026, 6, 1)))
         assertTrue(WeekParity.isNumerator(LocalDate.of(2026, 5, 25)))
+        // Числитель — нечётная неделя, знаменатель — чётная.
+        assertEquals("Нечётная", WeekParity.evenOddName(LocalDate.of(2026, 5, 25)))
+        assertEquals("Чётная", WeekParity.evenOddName(LocalDate.of(2026, 6, 1)))
     }
 
     @Test
