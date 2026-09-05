@@ -1,12 +1,8 @@
 *.iml
 .gradle
 /local.properties
-/.idea/caches
-/.idea/libraries
-/.idea/modules.xml
-/.idea/workspace.xml
-/.idea/navEditor.xml
-/.idea/assetWizardSettings.xml
+# Вся папка настроек IDE — локальное состояние машины, не коммитить.
+/.idea/
 .DS_Store
 /build
 /captures
