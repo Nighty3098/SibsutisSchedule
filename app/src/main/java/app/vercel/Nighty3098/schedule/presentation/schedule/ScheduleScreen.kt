@@ -34,7 +34,9 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -52,6 +54,7 @@ import java.time.LocalDate
 import java.time.LocalTime
 import java.time.format.DateTimeFormatter
 import java.util.Locale
+import kotlinx.coroutines.delay
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
 @Composable
@@ -65,6 +68,17 @@ fun ScheduleScreen(
 
     LaunchedEffect(state.error) {
         state.error?.let { snackbar.showSnackbar(it) }
+    }
+
+    // Живая подсветка «текущая/следующая пара»: раз в 20 с перечитываем
+    // время, чтобы бейдж сам переключался на стыке пар без ручного
+    // обновления. Идёт только для страницы «сегодня».
+    var now by remember { mutableStateOf(LocalTime.now()) }
+    LaunchedEffect(Unit) {
+        while (true) {
+            delay(HIGHLIGHT_TICK_MS)
+            now = LocalTime.now()
+        }
     }
 
     // Свайп дней: ±год от сегодня, стартовая страница — сегодня.
@@ -86,6 +100,9 @@ fun ScheduleScreen(
             pagerState.animateScrollToPage(target)
         }
     }
+    // Один стабильный колбэк для всех страниц: не мешает пропуску
+    // рекомпозиции DayPage при тиканье часов.
+    val onToday = remember { { viewModel.today() } }
 
     Scaffold(
         snackbarHost = { SnackbarHost(snackbar) },
@@ -164,7 +181,10 @@ fun ScheduleScreen(
                     day = day,
                     isRefreshing = state.isRefreshing,
                     themeMode = themeMode,
-                    onToday = viewModel::today,
+                    // Время для подсветки актуально только для «сегодня»;
+                    // остальным дням отдаём null — им тиканье не нужно.
+                    now = if (date == LocalDate.now()) now else null,
+                    onToday = onToday,
                 )
             }
         }
@@ -178,6 +198,7 @@ private fun DayPage(
     day: DaySchedule?,
     isRefreshing: Boolean,
     themeMode: ThemeMode,
+    now: LocalTime?,
     onToday: () -> Unit,
 ) {
     val lessons = day?.lessons.orEmpty()
@@ -206,7 +227,12 @@ private fun DayPage(
             return@Box
         }
 
-        val (currentIdx, nextIdx) = currentAndNextIndexes(lessons, date)
+        // Индексы текущей/следующей пары считаем ОДИН раз на эмиссию данных
+        // и по id, а не lessons.indexOf() внутри каждого item (это было O(n²)
+        // и пересчитывалось на каждую рекомпозицию).
+        val ids = remember(lessons, now) { currentAndNextIds(lessons, date, now) }
+        val currentId = ids.first
+        val nextId = ids.second
         LazyColumn(
             modifier = Modifier.fillMaxSize(),
             contentPadding = PaddingValues(12.dp),
@@ -215,8 +241,8 @@ private fun DayPage(
             items(lessons, key = { it.id }) { lesson ->
                 LessonCard(
                     lesson = lesson,
-                    isCurrent = lessons.indexOf(lesson) == currentIdx,
-                    isNext = lessons.indexOf(lesson) == nextIdx,
+                    isCurrent = lesson.id == currentId,
+                    isNext = lesson.id == nextId,
                     themeMode = themeMode,
                 )
             }
@@ -241,30 +267,40 @@ private fun EmptyHint(text: String, actionLabel: String, onAction: () -> Unit) {
     }
 }
 
+/** Период опроса времени для подсветки текущей пары. */
+private const val HIGHLIGHT_TICK_MS = 20_000L
+
+/** Форматтер локален не создаётся на каждую рекомпозицию (дорогая операция). */
+private val SubtitleFormatter =
+    DateTimeFormatter.ofPattern("d MMMM, EEEE", Locale.forLanguageTag("ru"))
+
 private fun formatSubtitle(date: LocalDate): String =
-    date.format(DateTimeFormatter.ofPattern("d MMMM, EEEE", Locale.forLanguageTag("ru")))
+    date.format(SubtitleFormatter)
         .replaceFirstChar { it.uppercaseChar() }
 
 /**
- * Индексы текущей и следующей пары (только если выбран сегодня).
+ * id текущей и следующей пары (только если выбран сегодня).
  * Текущая: start <= now < end. Следующая: первая с end > now.
+ * Возвращаем id (у каждого урока уникальный), а не индекс, чтобы
+ * сравнение в items шло за O(1).
  */
-private fun currentAndNextIndexes(
+private fun currentAndNextIds(
     lessons: List<Lesson>,
     date: LocalDate,
-    now: LocalTime = LocalTime.now(),
-): Pair<Int, Int> {
-    if (date != LocalDate.now() || lessons.isEmpty()) return -1 to -1
+    now: LocalTime?,
+): Pair<Long?, Long?> {
+    if (date != LocalDate.now() || lessons.isEmpty()) return null to null
+    val t = now ?: LocalTime.now()
     var current = -1
     var next = -1
     lessons.forEachIndexed { i, l ->
         val s = l.startTime ?: return@forEachIndexed
         val e = l.endTime ?: return@forEachIndexed
-        if (!now.isBefore(s) && now.isBefore(e) && current == -1) current = i
+        if (!t.isBefore(s) && t.isBefore(e) && current == -1) current = i
     }
-    next = lessons.indexOfFirst { (it.endTime ?: return@indexOfFirst false).isAfter(now) }
+    next = lessons.indexOfFirst { (it.endTime ?: return@indexOfFirst false).isAfter(t) }
         .let { if (it == current) -1 else it }
     // Если есть текущая, следующей считаем ближайшую после неё.
     if (current != -1 && next != -1 && next < current) next = -1
-    return current to next
+    return lessons.getOrNull(current)?.id to lessons.getOrNull(next)?.id
 }

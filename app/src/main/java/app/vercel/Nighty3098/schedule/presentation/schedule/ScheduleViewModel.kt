@@ -6,8 +6,9 @@ import androidx.lifecycle.viewModelScope
 import app.vercel.Nighty3098.schedule.domain.model.DaySchedule
 import app.vercel.Nighty3098.schedule.domain.repository.ScheduleRepository
 import app.vercel.Nighty3098.schedule.domain.repository.SettingsRepository
+import java.time.LocalDate
+import java.util.LinkedHashMap
 import kotlinx.coroutines.ExperimentalCoroutinesApi
-import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -19,12 +20,10 @@ import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
-import java.time.LocalDate
 
 data class ScheduleUiState(
     val selectedDate: LocalDate = LocalDate.now(),
     val groupQuery: String = "",
-    val day: DaySchedule? = null,
     val isRefreshing: Boolean = false,
     val error: String? = null,
 )
@@ -64,29 +63,36 @@ class ScheduleViewModel(
         }
     }
 
-    private val dayCaches = mutableMapOf<LocalDate, StateFlow<DaySchedule?>>()
+    /**
+     * L1-кеш потоков дней с доступ-порядком: давно не использованные
+     * даты вытесняются, чтобы за долгую сессию свайпов не накопились
+     * сотни постоянных StateFlow. 24 слотов с запасом покрывают видимые
+     * страницы пейджера + окно DaySelector.
+     */
+    private val dayCaches =
+        object : LinkedHashMap<LocalDate, StateFlow<DaySchedule?>>(MAX_CACHED_DAYS, 0.75f, true) {
+            override fun removeEldestEntry(
+                eldest: MutableMap.MutableEntry<LocalDate, StateFlow<DaySchedule?>>,
+            ): Boolean = size > MAX_CACHED_DAYS
+        }
 
     private val _isRefreshing = MutableStateFlow(false)
     private val _error = MutableStateFlow<String?>(null)
 
-    @OptIn(ExperimentalCoroutinesApi::class)
-    private val dayFlow: Flow<DaySchedule?> =
-        combine(_selectedDate, settings.groupQuery.distinctUntilChanged()) { date, group ->
-            date to group
-        }.flatMapLatest { (date, group) ->
-            if (group.isBlank()) flowOf(null)
-            else schedule.observeDay(date, group.trim())
-        }
-
-    @OptIn(ExperimentalCoroutinesApi::class)
+    /**
+     * Состояние экрана. ВНИМАНИЕ: само расписание дня в uiState сознательно
+     * НЕ дублируется — каждая страница пейджера читает своё через [dayFlow],
+     * а эта сборка отвечает только за навигацию/статусы. Иначе на каждую
+     * смену даты было бы два подписчённых Room-запроса на один день плюс
+     * кратковременный «мисматч» (новый заголовок с данными старого дня).
+     */
     val uiState: StateFlow<ScheduleUiState> =
-        combine(dayFlow, _selectedDate, settings.groupQuery, _isRefreshing, _error) {
-                day, date, group, refreshing, error,
+        combine(_selectedDate, settings.groupQuery, _isRefreshing, _error) {
+                date, group, refreshing, error,
             ->
             ScheduleUiState(
                 selectedDate = date,
                 groupQuery = group,
-                day = day,
                 isRefreshing = refreshing,
                 error = error,
             )
@@ -155,5 +161,8 @@ class ScheduleViewModel(
 
     companion object {
         private const val PAGER_RADIUS_DAYS = 365
+
+        /** Максимум закешированных потоков дней (LRU, доступ-порядок). */
+        private const val MAX_CACHED_DAYS = 24
     }
 }

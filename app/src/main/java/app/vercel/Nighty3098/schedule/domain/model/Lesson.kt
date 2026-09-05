@@ -1,5 +1,6 @@
 package app.vercel.Nighty3098.schedule.domain.model
 
+import androidx.compose.runtime.Immutable
 import java.time.LocalDate
 import java.time.LocalTime
 
@@ -9,6 +10,7 @@ import java.time.LocalTime
  * @param weekIndex 0 — числитель, 1 — знаменатель (двухнедельный цикл сайта).
  * @param dayIndex 0 — понедельник … 6 — воскресенье.
  */
+@Immutable
 data class Lesson(
     val id: Long = 0,
     val groupQuery: String,
@@ -46,6 +48,7 @@ data class Lesson(
 }
 
 /** Расписание одного календарного дня (уже спроецированное на дату). */
+@Immutable
 data class DaySchedule(
     val date: LocalDate,
     val weekIndex: Int,

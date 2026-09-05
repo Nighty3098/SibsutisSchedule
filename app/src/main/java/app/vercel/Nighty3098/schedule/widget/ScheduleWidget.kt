@@ -165,10 +165,10 @@ class ScheduleWidget : GlanceAppWidget() {
         val lessons: List<WidgetLesson> = if (group.isBlank()) {
             emptyList()
         } else {
+            // Разовый запрос (не подписка): виджет перерисовывается целиком,
+            // реактивность не нужна, а subscribe/collect обходится дороже.
             container.scheduleRepository
-                .observeDay(today, group)
-                .first()
-                .lessons
+                .getDayLessons(today, group)
                 .map {
                     WidgetLesson(
                         time = listOf(it.timeFrom, it.timeTo)
