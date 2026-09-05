@@ -4,6 +4,12 @@ import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.compose.animation.core.CubicBezierEasing
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.rememberCoroutineScope
@@ -19,6 +25,10 @@ import app.vercel.Nighty3098.schedule.presentation.settings.SettingsViewModel
 import app.vercel.Nighty3098.schedule.ui.theme.ScheduleTheme
 import app.vercel.Nighty3098.schedule.widget.ScheduleWidget
 import kotlinx.coroutines.launch
+
+/** Кривые Material emphasized motion для навигационных переходов. */
+private val EmphasizedDecelerate = CubicBezierEasing(0.05f, 0.7f, 0.1f, 1f)
+private val EmphasizedAccelerate = CubicBezierEasing(0.3f, 0f, 0.8f, 0.15f)
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {        super.onCreate(savedInstanceState)
@@ -36,7 +46,41 @@ class MainActivity : ComponentActivity() {
             }
             ScheduleTheme(themeMode = themeMode) {
                 val nav = rememberNavController()
-                NavHost(navController = nav, startDestination = "schedule") {
+                // Переходы как системные экраны новых Android: новый экран
+                // въезжает с края на всю ширину, старый остаётся и гаснет
+                // (параллакс), фейд нового идёт с задержкой 90мс —
+                // фирменный стаггер Material motion. На navigation 2.8+ эти
+                // же транзишены анимируют predictive back-жест.
+                NavHost(
+                    navController = nav,
+                    startDestination = "schedule",
+                    enterTransition = {
+                        slideInHorizontally(
+                            initialOffsetX = { it },
+                            animationSpec = tween(350, easing = EmphasizedDecelerate),
+                        ) + fadeIn(tween(210, delayMillis = 90))
+                    },
+                    exitTransition = {
+                        fadeOut(tween(350, easing = EmphasizedAccelerate))
+                    },
+                    popEnterTransition = {
+                        // Без задержки фейда и с быстрым проявлением: экран
+                        // под уходящими настройками должен стать непрозрачным
+                        // как можно раньше, иначе мигает белый фон окна.
+                        slideInHorizontally(
+                            initialOffsetX = { -it / 5 },
+                            animationSpec = tween(350, easing = EmphasizedDecelerate),
+                        ) + fadeIn(tween(200))
+                    },
+                    popExitTransition = {
+                        // Без затухания: уходящие настройки остаются
+                        // непрозрачными весь слайд — окну нечего просветить.
+                        slideOutHorizontally(
+                            targetOffsetX = { it },
+                            animationSpec = tween(350, easing = EmphasizedAccelerate),
+                        )
+                    },
+                ) {
                     composable("schedule") {
                         val vm: ScheduleViewModel = viewModel(
                             factory = ScheduleViewModel.Factory(

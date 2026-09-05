@@ -1,5 +1,9 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
 
-    <style name="Theme.Schedule" parent="android:Theme.Material.Light.NoActionBar" />
+    <!-- Фон окна — чёрный: все темы приложения тёмные (кроме dynamic light),
+         а при переходах сквозь полупрозрачные экраны не должен мигать белый. -->
+    <style name="Theme.Schedule" parent="android:Theme.Material.NoActionBar">
+        <item name="android:windowBackground">@android:color/black</item>
+    </style>
 </resources>
