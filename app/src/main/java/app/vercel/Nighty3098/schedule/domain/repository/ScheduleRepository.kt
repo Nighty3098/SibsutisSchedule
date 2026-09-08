@@ -2,6 +2,7 @@ package app.vercel.Nighty3098.schedule.domain.repository
 
 import app.vercel.Nighty3098.schedule.domain.model.DaySchedule
 import app.vercel.Nighty3098.schedule.domain.model.Lesson
+import app.vercel.Nighty3098.schedule.domain.model.RefreshOutcome
 import kotlinx.coroutines.flow.Flow
 import java.time.LocalDate
 
@@ -15,11 +16,13 @@ interface ScheduleRepository {
      *
      * @param force true — всегда идти в сеть (кнопка «Обновить»);
      * false — пропустить сеть, если кэш в Room свежее [CACHE_TTL_MILLIS].
-     * @return Result с количеством пар в кэше; при отсутствии сети
-     * и пустом кэше — failure, при наличии кэша сеть не обязательна
+     * @return Result с [RefreshOutcome]: количество пар в кэше + diff
+     * изменений относительно предыдущего кэша (пуст при пропуске сети
+     * и при первичной загрузке); при отсутствии сети и пустом кэше —
+     * failure, при наличии кэша сеть не обязательна
      * (данные уже доступны через [observeDay]).
      */
-    suspend fun refresh(groupQuery: String, force: Boolean = false): Result<Int>
+    suspend fun refresh(groupQuery: String, force: Boolean = false): Result<RefreshOutcome>
 
     /** Когда последний раз успешно обновляли группу (null — никогда). */
     suspend fun lastUpdated(groupQuery: String): Long?

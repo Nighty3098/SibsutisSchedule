@@ -27,6 +27,9 @@ interface ScheduleDao {
     )
     suspend fun getDay(group: String, week: Int, day: Int): List<LessonEntity>
 
+    @Query("SELECT * FROM lessons WHERE groupQuery = :group")
+    suspend fun getGroupLessons(group: String): List<LessonEntity>
+
     @Query("DELETE FROM lessons WHERE groupQuery = :group")
     suspend fun clearGroup(group: String)
 

@@ -22,6 +22,7 @@ import app.vercel.Nighty3098.schedule.data.repository.ScheduleRepositoryImpl
 import app.vercel.Nighty3098.schedule.domain.repository.ScheduleRepository
 import app.vercel.Nighty3098.schedule.domain.usecase.ObserveDayScheduleUseCase
 import app.vercel.Nighty3098.schedule.domain.usecase.RefreshScheduleUseCase
+import app.vercel.Nighty3098.schedule.util.ensureScheduleChannels
 import app.vercel.Nighty3098.schedule.widget.ScheduleUpdateWorker
 import app.vercel.Nighty3098.schedule.widget.ScheduleWidget
 import java.util.concurrent.TimeUnit
@@ -41,6 +42,7 @@ class ScheduleApp : Application() {
 
     override fun onCreate() {
         super.onCreate()
+        ensureScheduleChannels()
         container = AppContainer(applicationContext)
         container.schedulePeriodicRefresh()
         container.observeThemeForWidgets()

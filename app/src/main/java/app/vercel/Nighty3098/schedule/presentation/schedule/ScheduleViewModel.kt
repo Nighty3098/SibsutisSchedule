@@ -4,6 +4,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
 import app.vercel.Nighty3098.schedule.domain.model.DaySchedule
+import app.vercel.Nighty3098.schedule.domain.model.ScheduleChange
 import app.vercel.Nighty3098.schedule.domain.repository.ScheduleRepository
 import app.vercel.Nighty3098.schedule.domain.repository.SettingsRepository
 import java.time.LocalDate
@@ -26,7 +27,26 @@ data class ScheduleUiState(
     val groupQuery: String = "",
     val isRefreshing: Boolean = false,
     val error: String? = null,
+    val viewMode: ScheduleViewMode = ScheduleViewMode.DAY,
+    /** Изменения последнего ручного обновления — показывает диалог. */
+    val lastChanges: List<ScheduleChange>? = null,
 )
+
+/** Режим отображения расписания: по дням или неделей (Пн–Сб). */
+enum class ScheduleViewMode {
+    DAY,
+    WEEK,
+}
+
+/**
+ * Понедельник учебной недели для даты (Пн–Сб).
+ * Воскресенье — выходной: для него возвращаем следующий понедельник.
+ * Чистая функция — переиспользуется экраном для подзаголовка.
+ */
+fun weekMondayOf(date: LocalDate): LocalDate {
+    val effective = if (date.dayOfWeek.value == 7) date.plusDays(1) else date
+    return effective.minusDays((effective.dayOfWeek.value - 1).toLong())
+}
 
 class ScheduleViewModel(
     private val schedule: ScheduleRepository,
@@ -78,6 +98,8 @@ class ScheduleViewModel(
 
     private val _isRefreshing = MutableStateFlow(false)
     private val _error = MutableStateFlow<String?>(null)
+    private val _viewMode = MutableStateFlow(ScheduleViewMode.DAY)
+    private val _lastChanges = MutableStateFlow<List<ScheduleChange>?>(null)
 
     /**
      * Состояние экрана. ВНИМАНИЕ: само расписание дня в uiState сознательно
@@ -86,7 +108,7 @@ class ScheduleViewModel(
      * смену даты было бы два подписчённых Room-запроса на один день плюс
      * кратковременный «мисматч» (новый заголовок с данными старого дня).
      */
-    val uiState: StateFlow<ScheduleUiState> =
+    val uiState: StateFlow<ScheduleUiState> = combine(
         combine(_selectedDate, settings.groupQuery, _isRefreshing, _error) {
                 date, group, refreshing, error,
             ->
@@ -96,7 +118,12 @@ class ScheduleViewModel(
                 isRefreshing = refreshing,
                 error = error,
             )
-        }.stateIn(
+        },
+        _viewMode,
+        _lastChanges,
+    ) { base, mode, changes ->
+        base.copy(viewMode = mode, lastChanges = changes)
+    }.stateIn(
             scope = viewModelScope,
             started = SharingStarted.WhileSubscribed(5_000),
             initialValue = ScheduleUiState(),
@@ -118,6 +145,30 @@ class ScheduleViewModel(
 
     fun today() = selectDate(LocalDate.now())
 
+    fun setViewMode(mode: ScheduleViewMode) {
+        _viewMode.value = mode
+    }
+
+    fun dismissChanges() {
+        _lastChanges.value = null
+    }
+
+    /**
+     * Понедельник учебной недели для [date] (Пн–Сб).
+     * Воскресенье — выходной: в этот день показываем следующую
+     * учебную неделю, а не только что прошедшую.
+     */
+    fun weekMonday(date: LocalDate): LocalDate = weekMondayOf(date)
+
+    /**
+     * Даты учебной недели (Пн–Сб), содержащей [date].
+     * Воскресенье не показываем: пар там не бывает.
+     */
+    fun weekDates(date: LocalDate): List<LocalDate> {
+        val monday = weekMonday(date)
+        return (0 until WEEK_DAYS).map { monday.plusDays(it.toLong()) }
+    }
+
     /** Ручное обновление по кнопке — всегда в сеть, кэш игнорируется. */
     fun refresh() {
         viewModelScope.launch {
@@ -134,8 +185,13 @@ class ScheduleViewModel(
         _isRefreshing.value = true
         if (!silent) _error.value = null
         schedule.refresh(group, force)
-            .onSuccess {
+            .onSuccess { outcome ->
                 _error.value = null
+                // Диалог с изменениями — только после ручного обновления:
+                // тихий автоапдейт при старте не должен всплывать.
+                if (!silent && outcome.changes.isNotEmpty()) {
+                    _lastChanges.value = outcome.changes
+                }
                 onLessonsChanged()
             }
             .onFailure { e ->
@@ -164,5 +220,8 @@ class ScheduleViewModel(
 
         /** Максимум закешированных потоков дней (LRU, доступ-порядок). */
         private const val MAX_CACHED_DAYS = 24
+
+        /** Дней в учебной неделе для WeekView: Пн–Сб. */
+        private const val WEEK_DAYS = 6
     }
 }

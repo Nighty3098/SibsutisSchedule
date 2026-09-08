@@ -1,5 +1,6 @@
 package app.vercel.Nighty3098.schedule.domain.usecase
 
+import app.vercel.Nighty3098.schedule.domain.model.RefreshOutcome
 import app.vercel.Nighty3098.schedule.domain.repository.ScheduleRepository
 import app.vercel.Nighty3098.schedule.domain.repository.SettingsRepository
 import kotlinx.coroutines.flow.first
@@ -9,7 +10,7 @@ class RefreshScheduleUseCase(
     private val schedule: ScheduleRepository,
     private val settings: SettingsRepository,
 ) {
-    suspend operator fun invoke(groupQuery: String? = null, force: Boolean = false): Result<Int> {
+    suspend operator fun invoke(groupQuery: String? = null, force: Boolean = false): Result<RefreshOutcome> {
         val group = groupQuery ?: settings.groupQuery.first()
         if (group.isBlank()) return Result.failure(IllegalArgumentException("Не указана группа"))
         return schedule.refresh(group.trim(), force)

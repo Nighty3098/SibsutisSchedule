@@ -11,8 +11,11 @@ import app.vercel.Nighty3098.schedule.data.network.ScheduleFetcher
 import app.vercel.Nighty3098.schedule.data.parser.ScheduleParser
 import app.vercel.Nighty3098.schedule.domain.model.DaySchedule
 import app.vercel.Nighty3098.schedule.domain.model.Lesson
+import app.vercel.Nighty3098.schedule.domain.model.LessonSnapshot
 import app.vercel.Nighty3098.schedule.domain.model.LessonType
+import app.vercel.Nighty3098.schedule.domain.model.RefreshOutcome
 import app.vercel.Nighty3098.schedule.domain.model.WeekParity
+import app.vercel.Nighty3098.schedule.domain.model.diffLessonSnapshots
 import app.vercel.Nighty3098.schedule.domain.repository.ScheduleRepository
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
@@ -52,7 +55,7 @@ class ScheduleRepositoryImpl(
         }
     }
 
-    override suspend fun refresh(groupQuery: String, force: Boolean): Result<Int> =
+    override suspend fun refresh(groupQuery: String, force: Boolean): Result<RefreshOutcome> =
         withContext(Dispatchers.IO) {
             val group = groupQuery.trim()
             if (group.isEmpty()) {
@@ -64,7 +67,7 @@ class ScheduleRepositoryImpl(
                 if (!force && ScheduleRepository.isCacheFresh(updatedAt)) {
                     val ageMin = (System.currentTimeMillis() - (updatedAt ?: 0)) / 60_000
                     Log.d(TAG, "Кэш группы $group свежий (возраст $ageMin мин) — сеть пропускаем")
-                    return@runCatching dao.countLessons(group)
+                    return@runCatching RefreshOutcome(dao.countLessons(group))
                 }
                 if (force) {
                     Log.d(TAG, "Принудительное обновление группы $group — идём в сеть")
@@ -89,6 +92,13 @@ class ScheduleRepositoryImpl(
                     fetcher.fetchHtml(match.id)
                 }
                 val parsed = ScheduleParser.parse(group, html)
+                // Снимок старого кэша ДО замены — для диффа изменений.
+                val oldSnapshots = dao.getGroupLessons(group).map { it.toSnapshot() }
+                val newSnapshots = parsed.lessons.map { it.toSnapshot() }
+                val changes = diffLessonSnapshots(oldSnapshots, newSnapshots)
+                if (changes.isNotEmpty()) {
+                    Log.d(TAG, "Обновление группы $group: изменений ${changes.size}")
+                }
                 val entities = parsed.lessons.map { it.toEntity(group) }
                 dao.replaceGroup(group, entities)
                 dao.upsertMeta(
@@ -99,7 +109,7 @@ class ScheduleRepositoryImpl(
                         lessonCount = entities.size,
                     ),
                 )
-                entities.size
+                RefreshOutcome(entities.size, changes)
             }
         }
 
@@ -132,6 +142,32 @@ class ScheduleRepositoryImpl(
         room = room,
         subgroup = subgroup,
         groups = groups.split('\n').map { it.trim() }.filter { it.isNotEmpty() },
+    )
+
+    private fun LessonEntity.toSnapshot(): LessonSnapshot = LessonSnapshot(
+        weekIndex = weekIndex,
+        dayIndex = dayIndex,
+        number = number,
+        timeFrom = timeFrom,
+        timeTo = timeTo,
+        subject = subject,
+        typeRaw = typeRaw,
+        teachers = teachers.split('\n').map { it.trim() }.filter { it.isNotEmpty() },
+        room = room,
+        subgroup = subgroup,
+    )
+
+    private fun ScheduleParser.ParsedLesson.toSnapshot(): LessonSnapshot = LessonSnapshot(
+        weekIndex = weekIndex,
+        dayIndex = dayIndex,
+        number = number,
+        timeFrom = timeFrom,
+        timeTo = timeTo,
+        subject = subject,
+        typeRaw = typeRaw,
+        teachers = teachers,
+        room = room,
+        subgroup = subgroup,
     )
 
     private fun ScheduleParser.ParsedLesson.toEntity(group: String): LessonEntity =

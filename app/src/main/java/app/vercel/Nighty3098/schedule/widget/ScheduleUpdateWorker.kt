@@ -5,6 +5,7 @@ import androidx.glance.appwidget.updateAll
 import androidx.work.CoroutineWorker
 import androidx.work.WorkerParameters
 import app.vercel.Nighty3098.schedule.appContainer
+import app.vercel.Nighty3098.schedule.util.notifyScheduleChanges
 import kotlinx.coroutines.flow.first
 
 /**
@@ -25,7 +26,16 @@ class ScheduleUpdateWorker(
             val group = container.settings.groupQuery.first().trim()
             if (group.isNotEmpty()) {
                 // Ошибки сети не роняем: кэш и так показывается.
+                // Найденные изменения — уведомлением (TTL свежий кэш
+                // вернёт пустой diff, первичная загрузка — тоже).
                 container.scheduleRepository.refresh(group)
+                    .onSuccess { outcome ->
+                        if (outcome.changes.isNotEmpty()) {
+                            runCatching {
+                                applicationContext.notifyScheduleChanges(outcome.changes)
+                            }
+                        }
+                    }
             }
             // Календарь пересинхронизируется, только если включён в настройках.
             runCatching { container.calendarSync.syncIfEnabled() }
