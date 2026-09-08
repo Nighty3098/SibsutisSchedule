@@ -22,6 +22,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.platform.LocalContext
 import androidx.core.content.ContextCompat
 import androidx.glance.appwidget.updateAll
+import kotlinx.coroutines.Dispatchers
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
@@ -66,8 +67,12 @@ class MainActivity : ComponentActivity() {
             }
             // Перерисовка виджетов после обновления данных.
             // За темой следит контейнер (observeThemeForWidgets).
+            // Вне main-потока: перекомпозиция Glance + binder-вызовы
+            // AppWidgetManager не должны отъедать кадры интерфейса.
             val updateWidgets = {
-                scope.launch { ScheduleWidget().updateAll(applicationContext) }
+                scope.launch(Dispatchers.Default) {
+                    ScheduleWidget().updateAll(applicationContext)
+                }
             }
             ScheduleTheme(themeMode = themeMode) {
                 val nav = rememberNavController()

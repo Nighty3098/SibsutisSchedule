@@ -132,6 +132,9 @@ fun ScheduleScreen(
     // Один стабильный колбэк для всех страниц: не мешает пропуску
     // рекомпозиции DayPage при тиканье часов.
     val onToday = remember { { viewModel.today() } }
+    // Стабильная ссылка вместо viewModel::selectDate: иначе каждое
+    // создание лямбды ломало бы пропуск рекомпозиции DaySelector.
+    val onSelectDate = remember { viewModel::selectDate }
 
     // Диалог со списком изменений после ручного обновления.
     val lastChanges = state.lastChanges
@@ -253,7 +256,7 @@ fun ScheduleScreen(
                             Column(modifier = Modifier.fillMaxSize()) {
                                 DaySelector(
                                     selectedDate = state.selectedDate,
-                                    onSelect = viewModel::selectDate,
+                                    onSelect = onSelectDate,
                                 )
                                 // Вертикальный список внутри горизонтального
                                 // пейджера: свайп влево/вправо листает дни,
