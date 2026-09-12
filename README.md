@@ -1,5 +1,13 @@
 # SibSUTIS Schedule
 
+<img src="1.png" width="90%" />
+
+<div align="center">
+<img src="2.png" width="45%" />
+<img src="3.png" width="45%" />
+<img src="4.png" width="45%" />
+</div>
+
 Android-приложение для просмотра расписания занятий студентов СибГУТИ
 ([sibsutis.ru](https://sibsutis.ru/students/schedule/)).
 
