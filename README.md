@@ -1,8 +1,7 @@
 # SibSUTIS Schedule
 
-<img src="1.png" width="90%" />
-
 <div align="center">
+<img src="1.png" width="90%" />
 <img src="2.png" width="45%" />
 <img src="3.png" width="45%" />
 <img src="4.png" width="45%" />
